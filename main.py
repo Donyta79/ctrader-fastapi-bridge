@@ -1,59 +1,50 @@
 import os
-import asyncio
-from fastapi import FastAPI, HTTPException
+import random
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from ctrader_open_api import Client, EndPoints, TcpProtocol
-from ctrader_open_api.messages.OpenApiMessages_pb2 import (
-    ProtoOAApplicationAuthReq,
-    ProtoOAAccountAuthReq,
-    ProtoOAGetTrendbarsReq
-)
 
 app = FastAPI(title="cTrader Bridge API")
 
-# Enable CORS so your Hercules Frontend can call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your Hercules app domain in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# cTrader Credentials from Environment Variables
-CLIENT_ID = os.getenv("CTRADER_CLIENT_ID")
-CLIENT_SECRET = os.getenv("CTRADER_CLIENT_SECRET")
-ACCESS_TOKEN = os.getenv("CTRADER_ACCESS_TOKEN")
-ACCOUNT_ID = int(os.getenv("CTRADER_ACCOUNT_ID", "0"))
-
-# Persistent cTrader Client Connection
-ctrader_client = Client(EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
-
-@app.on_event("startup")
-async def startup_event():
-    # Start persistent connection to cTrader TCP server
-    ctrader_client.startService()
-    print("cTrader TCP client service started.")
+# Set to True while waiting for Spotware activation, set to False once Active
+DEV_MOCK_MODE = True
 
 @app.get("/health")
 def health_check():
-    return {"status": "online", "ctrader_connected": ctrader_client.isConnected()}
+    return {
+        "status": "online",
+        "mode": "Mock Mode (Waiting for cTrader Activation)" if DEV_MOCK_MODE else "Live cTrader Mode"
+    }
 
-# REST Endpoint that your Hercules (Convex) App will call
 @app.get("/api/v1/market-data/{symbol}")
 async def get_symbol_data(symbol: str):
-    if not ctrader_client.isConnected():
-        raise HTTPException(status_code=503, detail="cTrader client disconnected")
+    # Simulated data so Hercules AI Coder can build the whole UI today
+    base_price = 1.0850 if "EUR" in symbol.upper() or "USD" in symbol.upper() else 180.0
     
-    # Example response structure for your Watchlist & Seasonality Engine
     return {
-        "symbol": symbol,
-        "ma21": 1.0850,
-        "ma55": 1.0820,
-        "ma233": 1.0780,
-        "cv_percentage": 1.25,
+        "symbol": symbol.upper(),
+        "current_price": base_price,
+        "ma21": round(base_price * 0.998, 4),
+        "ma55": round(base_price * 0.995, 4),
+        "ma233": round(base_price * 0.990, 4),
+        "seasonality": {
+            "monthly_avg": [1.2, -0.5, 0.8, 1.5, -1.0, 0.4, 0.9, -0.2, -1.1, 0.6, 1.8, 0.3],
+            "weekly_avg": [0.4, 0.2, -0.3, 0.5]
+        },
+        "cv_percentage": round(random.uniform(0.8, 1.5), 2),
+        "projected_range": {
+            "low": round(base_price * 0.991, 4),
+            "high": round(base_price * 1.009, 4)
+        },
         "sr_levels": {
-            "strong_support": 1.0750,
-            "strong_resistance": 1.0920
+            "h4": {"strong_support": round(base_price * 0.985, 4), "strong_resistance": round(base_price * 1.015, 4)},
+            "daily": {"strong_support": round(base_price * 0.975, 4), "strong_resistance": round(base_price * 1.025, 4)}
         }
     }
